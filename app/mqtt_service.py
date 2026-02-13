@@ -15,7 +15,7 @@ import json
 import logging
 import ssl
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -130,7 +130,7 @@ class MQTTService:
 
             # Live-Daten im Speicher halten
             self.last_data = payload
-            self.last_received = datetime.utcnow()
+            self.last_received = datetime.now(timezone.utc)
 
             # In Supabase schreiben
             self._write_to_supabase(payload)
@@ -217,15 +217,13 @@ class MQTTService:
             return []
 
         # Range-String parsen: "-1h" → 1 Stunde, "-7d" → 7 Tage
-        from datetime import timedelta
-
         amount = int(range_str[1:-1])
         unit = range_str[-1]
         delta_map = {"h": "hours", "d": "days", "w": "weeks", "m": "days"}
         multiplier = 30 if unit == "m" else 1  # m = Monat ≈ 30 Tage
         delta = timedelta(**{delta_map.get(unit, "hours"): amount * multiplier})
 
-        since = (datetime.utcnow() - delta).isoformat() + "Z"
+        since = (datetime.now(timezone.utc) - delta).isoformat() + "Z"
 
         try:
             response = self._http.get(

@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # --- CORS (kommaseparierte Liste erlaubter Origins) ---
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
+    # --- Trusted Hosts (kommasepariert, leer = alle erlaubt) ---
+    trusted_hosts: str = ""
+
     # --- FastAPI ---
     api_host: str = "0.0.0.0"
     api_port: int = 8000

@@ -3,11 +3,12 @@
 # =============================================================================
 #
 # API-Endpunkte:
-#   POST /api/login        → Passwort prüfen, Token zurückgeben
-#   GET  /api/live          → Letzter empfangener Datensatz (Echtzeit)
-#   GET  /api/history       → Historische Daten aus Supabase
-#   POST /api/toggle-load   → Lastausgang des Ladereglers schalten
-#   GET  /api/health        → Health-Check für Monitoring (öffentlich)
+#   POST /api/login         → Passwort prüfen, Token zurückgeben
+#   POST /api/verify-token  → Token serverseitig validieren (für QR-Login)
+#   GET  /api/live           → Letzter empfangener Datensatz (Echtzeit)
+#   GET  /api/history        → Historische Daten aus Supabase
+#   POST /api/toggle-load    → Lastausgang des Ladereglers schalten
+#   GET  /api/health         → Health-Check für Monitoring (öffentlich)
 #
 # Alle Endpunkte außer /api/login und /api/health sind mit
 # Token-Authentifizierung geschützt. Das Token kann als Bearer-Token
@@ -19,11 +20,12 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
 
 from app.auth import verify_token
@@ -79,6 +81,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Trusted Host Middleware (optional, für Produktion) ---
+if settings.trusted_hosts:
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=[h.strip() for h in settings.trusted_hosts.split(",") if h.strip()],
+    )
+
+
+# --- Security Headers Middleware ---
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
+
 
 # =============================================================================
 # Pydantic Request/Response Modelle
@@ -111,6 +132,18 @@ class HealthResponse(BaseModel):
 async def root():
     """Root-Endpoint für Monitoring-Dienste (UptimeRobot, Render Health Check)."""
     return {"status": "ok", "service": "fensterkraftwerk-backend"}
+
+
+# --- Token-Validierung (öffentlich) ---
+@app.post("/api/verify-token")
+async def verify_token_endpoint(request: LoginRequest):
+    """
+    Prüft ob ein Token gültig ist, ohne ein neues auszustellen.
+    Wird vom Frontend für Auto-Login per URL-Token verwendet.
+    """
+    if request.password != settings.api_token:
+        raise HTTPException(status_code=401, detail="Ungültiges Token.")
+    return {"valid": True}
 
 
 # --- Login (öffentlich) ---
@@ -162,7 +195,7 @@ async def get_live_data(_token: str = Depends(verify_token)):
         "received_at": mqtt_service.last_received.isoformat()
             if mqtt_service.last_received else None,
         "age_seconds": (
-            (datetime.utcnow() - mqtt_service.last_received).total_seconds()
+            (datetime.now(timezone.utc) - mqtt_service.last_received).total_seconds()
             if mqtt_service.last_received else None
         )
     }

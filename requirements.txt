@@ -1,9 +1,10 @@
 # =============================================================================
-# Fensterkraftwerk Backend – Python Dependencies (Render.com)
+# Fensterkraftwerk – Python Dependencies
 # =============================================================================
 
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
+gunicorn>=21.2.0
 paho-mqtt>=1.6.1,<2.0
 httpx>=0.27.0
 python-dotenv>=1.0.0
