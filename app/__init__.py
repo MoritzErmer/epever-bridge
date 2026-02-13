@@ -1,0 +1,1 @@
+# Fensterkraftwerk Backend – App Package
